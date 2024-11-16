@@ -581,3 +581,212 @@ public class StudentsController : ControllerBase
    - Context-aware validation
 
 This implementation provides a robust way to implement custom business rules while maintaining clean and reusable code.
+
+
+
+# FluentValidation in .NET Core APIs
+
+## Table of Contents
+- [Setup and Installation](#setup-and-installation)
+- [Basic Implementation](#basic-implementation)
+- [Advanced Configuration](#advanced-configuration)
+- [Integration Methods](#integration-methods)
+- [Best Practices](#best-practices)
+
+## Setup and Installation
+
+### Required NuGet Packages
+```xml
+<ItemGroup>
+    <PackageReference Include="FluentValidation.DependencyInjection" Version="11.x.x" />
+    <PackageReference Include="FluentValidation.AspNetCore" Version="11.x.x" />
+</ItemGroup>
+```
+
+### Project Structure
+```
+YourApi/
+├── Contracts/
+│   ├── Requests/
+│   │   └── CreatePollRequest.cs
+│   └── Validations/
+│       └── CreatePollRequestValidator.cs
+└── Program.cs
+```
+
+## Basic Implementation
+
+### Validator Class
+```csharp
+using FluentValidation;
+
+public class CreatePollRequestValidator 
+    : AbstractValidator<CreatePollRequest>
+{
+    public CreatePollRequestValidator()
+    {
+        RuleFor(r => r.Title)
+            .NotEmpty()
+            .MinimumLength(3)
+            .MaximumLength(100);
+            
+        RuleFor(r => r.Description)
+            .MaximumLength(500);
+    }
+}
+```
+
+### Manual Integration (Before Automation)
+```csharp
+[ApiController]
+public class PollsController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult Add(
+        [FromBody] CreatePollRequest request,
+        [FromServices] IValidator<CreatePollRequest> validator)
+    {
+        var validationResult = validator.Validate(request);
+        
+        if (!validationResult.IsValid)
+        {
+            var modelState = new ModelStateDictionary();
+            validationResult.Errors.ForEach(error => 
+                modelState.AddModelError(
+                    error.PropertyName, 
+                    error.ErrorMessage));
+                    
+            return ValidationProblem(modelState);
+        }
+
+        var newPoll = _pollService.Add(request.Adapt<Poll>());
+        return CreatedAtAction(
+            nameof(Get), 
+            new { id = newPoll.Id }, 
+            newPoll);
+    }
+}
+```
+
+## Advanced Configuration
+
+### Program.cs Setup
+```csharp
+// Method 1: Register single validator
+builder.Services.AddScoped<IValidator<CreatePollRequest>, 
+    CreatePollRequestValidator>();
+
+// Method 2: Register all validators from assembly
+builder.Services.AddValidatorsFromAssembly(
+    Assembly.GetExecutingAssembly());
+
+// Method 3: Register validators from marker assembly
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+
+// Enable automatic validation
+builder.Services
+    .AddFluentValidationAutoValidation()
+    .AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
+```
+
+### Clean Controller with Automatic Validation
+```csharp
+[ApiController]
+public class PollsController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult Add([FromBody] CreatePollRequest request)
+    {
+        var newPoll = _pollService.Add(request.Adapt<Poll>());
+        return CreatedAtAction(
+            nameof(Get), 
+            new { id = newPoll.Id }, 
+            newPoll);
+    }
+}
+```
+
+## Integration Methods
+
+```mermaid
+graph TD
+    A[FluentValidation Integration] --> B[Manual Integration]
+    A --> C[Automatic Integration]
+    B --> D[Explicit Validation Code]
+    B --> E[Service Injection]
+    C --> F[AddFluentValidationAutoValidation]
+    C --> G[Clean Controller Code]
+```
+
+### Registration Options Comparison
+
+| Method | Pros | Cons |
+|--------|------|------|
+| Single Registration | Clear dependencies | Manual registration for each validator |
+| Assembly Scanning | Automatic registration | Might register unnecessary validators |
+| Marker Interface | Clean architecture support | Additional interface required |
+
+## Best Practices
+
+1. **Validator Organization**
+   ```csharp
+   public class CreatePollRequestValidator 
+       : AbstractValidator<CreatePollRequest>
+   {
+       public CreatePollRequestValidator()
+       {
+           // Group related rules
+           ApplyTitleRules();
+           ApplyDescriptionRules();
+       }
+
+       private void ApplyTitleRules()
+       {
+           RuleFor(x => x.Title)
+               .NotEmpty()
+               .MinimumLength(3)
+               .MaximumLength(100)
+               .WithMessage("Title must be between 3 and 100 characters");
+       }
+
+       private void ApplyDescriptionRules()
+       {
+           RuleFor(x => x.Description)
+               .MaximumLength(500)
+               .When(x => !string.IsNullOrEmpty(x.Description));
+       }
+   }
+   ```
+
+2. **Custom Error Messages**
+   ```csharp
+   RuleFor(x => x.Title)
+       .NotEmpty()
+       .WithMessage("Title is required")
+       .MinimumLength(3)
+       .WithMessage("Title must be at least 3 characters")
+       .MaximumLength(100)
+       .WithMessage("Title cannot exceed 100 characters");
+   ```
+
+3. **Conditional Validation**
+   ```csharp
+   RuleFor(x => x.OptionalField)
+       .NotEmpty()
+       .When(x => x.RequireOptionalField)
+       .WithMessage("Field is required when RequireOptionalField is true");
+   ```
+
+4. **Complex Validations**
+   ```csharp
+   RuleFor(x => x)
+       .Custom((request, context) =>
+       {
+           if (ComplexValidationFails(request))
+           {
+               context.AddFailure("Custom validation failed");
+           }
+       });
+   ```
+
+This implementation provides a clean, maintainable way to handle validation in your API endpoints while keeping the controllers focused on their primary responsibilities.

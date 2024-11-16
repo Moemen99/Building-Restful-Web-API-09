@@ -378,3 +378,206 @@ public class PollsController : ControllerBase
    - No need for explicit ModelState checks
 
 Using proper validation ensures data integrity and provides clear feedback to API consumers while maintaining clean and maintainable code.
+
+
+# Custom Validation Attributes in .NET Core
+
+## Table of Contents
+- [Introduction](#introduction)
+- [Creating Custom Validation](#creating-custom-validation)
+- [Implementation Example](#implementation-example)
+- [Usage and Testing](#usage-and-testing)
+- [Best Practices](#best-practices)
+
+## Introduction
+
+Custom validation attributes allow you to implement business-specific validation rules that aren't covered by built-in attributes.
+
+```mermaid
+graph TD
+    A[Model Property] --> B[Custom Validation Attribute]
+    B --> C{Validation Logic}
+    C --> D[Valid]
+    C --> E[Invalid]
+    E --> F[Custom Error Message]
+```
+
+## Creating Custom Validation
+
+### MinAge Attribute Implementation
+```csharp
+using System.ComponentModel.DataAnnotations;
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+ public class MinAgeAttribute(int minAge) : ValidationAttribute
+ {
+     private readonly int _minAge = minAge;
+
+     protected override ValidationResult? IsValid(object? value, ValidationContext validationContext)
+     {
+
+         if (value is null)
+         {
+             
+                 return ValidationResult.Success;
+         }
+
+         if (value is not null)
+         {
+             var date = (DateTime)value;
+             Console.WriteLine(DateTime.Today);
+             Console.WriteLine(date.AddYears(_minAge));
+             if (DateTime.Today < date.AddYears(_minAge)) 
+                 return new ValidationResult($"Invalid {validationContext.DisplayName}, Age Must be more than {_minAge} old ");
+         }
+
+         return ValidationResult.Success;
+     }
+ }
+```
+
+### Model Class
+```csharp
+public class Student
+{
+    public int Id { get; set; }
+    
+    public string FirstName { get; set; } = string.Empty;
+    
+    public string MiddleName { get; set; } = string.Empty;
+    
+    public string LastName { get; set; } = string.Empty;
+    
+    [MinAge(18)]
+    [Display(Name = "Date of Birth")]
+    public DateTime? DateOfBirth { get; set; }
+}
+```
+
+### Controller Implementation
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class StudentsController : ControllerBase
+{
+    [HttpPost("test")]
+    public IActionResult Test([FromBody] Student request)
+    {
+        return Ok("Value accepted");
+    }
+}
+```
+
+## Usage and Testing
+
+### Valid Request
+```json
+{
+    "id": 0,
+    "firstName": "string",
+    "middleName": "string",
+    "lastName": "string",
+    "dateOfBirth": "2000-03-29T03:27:40.245Z"
+}
+```
+
+### Invalid Request
+```json
+{
+    "id": 0,
+    "firstName": "string",
+    "middleName": "string",
+    "lastName": "string",
+    "dateOfBirth": "2024-03-29T03:26:55.395Z"
+}
+```
+
+## Best Practices
+
+1. **Flexible Parameter Design**
+   ```csharp
+   public class MinAgeAttribute : ValidationAttribute
+   {
+       private readonly int _minAge;
+       private const string DefaultErrorMessage = 
+           "Age must be {0} years or older";
+
+       public MinAgeAttribute(int minAge) 
+           : base(() => string.Format(DefaultErrorMessage, minAge))
+       {
+           _minAge = minAge;
+       }
+   }
+   ```
+
+2. **Multiple Validation Rules**
+   ```csharp
+   public class Person
+   {
+       [MinAge(18)]
+       [Display(Name = "Date of Birth")]
+       [Required(ErrorMessage = "Date of Birth is required")]
+       public DateTime? DateOfBirth { get; set; }
+   }
+   ```
+
+3. **Custom Error Messages**
+   ```csharp
+   [MinAge(18, ErrorMessage = "You must be at least 18 years old")]
+   [Display(Name = "Date of Birth")]
+   public DateTime? DateOfBirth { get; set; }
+   ```
+
+4. **Validation Context Usage**
+   ```csharp
+   protected override ValidationResult? IsValid(
+       object? value, 
+       ValidationContext validationContext)
+   {
+       var displayName = validationContext.DisplayName;
+       var objectInstance = validationContext.ObjectInstance;
+       var objectType = validationContext.ObjectType;
+
+       // Use context information for more detailed validation
+       return ValidationResult.Success;
+   }
+   ```
+
+5. **Type Safety**
+   ```csharp
+   protected override ValidationResult? IsValid(
+       object? value, 
+       ValidationContext validationContext)
+   {
+       if (value is not DateTime date)
+       {
+           return new ValidationResult(
+               $"{validationContext.DisplayName} must be a valid date");
+       }
+       // Continue validation
+   }
+   ```
+
+## Key Features of Custom Validation
+
+1. **Reusability**
+   - Create once, use across multiple properties
+   - Consistent validation logic
+   - Easy maintenance
+
+2. **Flexibility**
+   - Parameterized validation rules
+   - Custom error messages
+   - Support for different data types
+
+3. **Integration**
+   - Works with MVC model validation
+   - Compatible with API controllers
+   - Supports dependency injection
+
+4. **Error Handling**
+   - Custom error messages
+   - Localization support
+   - Context-aware validation
+
+This implementation provides a robust way to implement custom business rules while maintaining clean and reusable code.
